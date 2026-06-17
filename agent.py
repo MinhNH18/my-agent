@@ -744,17 +744,34 @@ def write_comparison_sheet(ws, comparison: dict):
 
 
 def export_excel(
-    data: dict,
+    results: list[dict],
     comparison: dict | None,
     output_path: str,
     source_files: list[str],
 ):
-    wb = openpyxl.Workbook()
-    write_summary_sheet(wb.active, data, source_files)
-    write_commercial_sheet(wb.create_sheet(), data)
-    write_payment_sheet(wb.create_sheet(), data)
+    """Xuất Excel. Nếu results có >1 phần tử, mỗi hợp đồng nhận 3 sheets riêng."""
+    wb   = openpyxl.Workbook()
+    multi = len(results) > 1
+
+    for i, data in enumerate(results):
+        fname = source_files[i] if i < len(source_files) else f"hop_dong_{i+1}.docx"
+        stem  = Path(fname).stem[:18]          # cap cho tên sheet max 31 chars
+
+        ws_s = wb.active if i == 0 else wb.create_sheet()
+        write_summary_sheet(ws_s, data, [fname])
+        ws_s.title = (f"{i+1}. {stem} - Tóm tắt"[:31] if multi else "📋 Tóm tắt HĐ")
+
+        ws_c = wb.create_sheet()
+        write_commercial_sheet(ws_c, data)
+        ws_c.title = (f"{i+1}. {stem} - Commercial"[:31] if multi else "💰 Commercial Terms")
+
+        ws_p = wb.create_sheet()
+        write_payment_sheet(ws_p, data)
+        ws_p.title = (f"{i+1}. {stem} - Payment"[:31] if multi else "🏦 Payment & Recon")
+
     if comparison:
         write_comparison_sheet(wb.create_sheet(), comparison)
+
     for ws in wb.worksheets:
         ws.freeze_panes = "A4"
     wb.save(output_path)
@@ -814,30 +831,35 @@ def main():
     api_key = get_api_key()
 
     print("\n🤖 Phân tích:\n")
-    data = extract_contract(contract_texts, api_key)
+    fnames  = list(contract_texts.keys())
+    results: list[dict] = []
+    for fname, text in contract_texts.items():
+        print(f"  → Phân tích: {fname}")
+        r = extract_contract({fname: text}, api_key)
+        results.append(r)
+        missing = r.get("truong_con_thieu") or []
+        if missing:
+            print(f"     ⚠️  Thiếu: {', '.join(missing)}")
 
     comparison = None
     if email_texts:
-        comparison = compare_email(email_texts, data, api_key)
-
-    missing = data.get("truong_con_thieu") or []
-    if missing:
-        print("\n⚠️  Thông tin còn thiếu:")
-        for m in missing:
-            print(f"     • {m}")
+        # So sánh email với hợp đồng đầu tiên (hoặc hợp đồng duy nhất)
+        comparison = compare_email(email_texts, results[0], api_key)
 
     # Xác định output path
     if args.output:
         output_path = args.output
     else:
-        first = Path(args.contracts[0]) if args.contracts else Path(list(contract_texts)[0])
+        first = Path(args.contracts[0]) if args.contracts else Path(fnames[0])
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = str(first.parent / f"ContractReview_{ts}.xlsx")
 
     print("\n📊 Xuất Excel:\n")
-    export_excel(data, comparison, output_path, args.contracts or list(contract_texts))
+    export_excel(results, comparison, output_path, fnames)
 
     print(f"\n✅ Hoàn thành!\n   📁 {output_path}")
+    if len(results) > 1:
+        print(f"   📑 {len(results)} hợp đồng được phân tích riêng biệt → {len(results)*3} sheets")
     if comparison:
         n_diff = sum(
             1 for x in (comparison.get("ket_qua_so_sanh") or [])

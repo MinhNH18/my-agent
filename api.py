@@ -98,20 +98,26 @@ async def _run_analysis(
                 _jobs[job_id] = {"status": "error", "error": "Không đọc được nội dung từ các file hợp đồng."}
                 return
 
-            result_data = await loop.run_in_executor(None, extract_contract, contract_texts, api_key)
+            # Phân tích từng file hợp đồng riêng biệt
+            fnames  = list(contract_texts.keys())
+            results: list[dict] = []
+            for fname, text in contract_texts.items():
+                r = await loop.run_in_executor(None, extract_contract, {fname: text}, api_key)
+                results.append(r)
 
             comparison = None
             if email_texts:
-                comparison = await loop.run_in_executor(None, compare_email, email_texts, result_data, api_key)
+                # So sánh email với hợp đồng đầu tiên
+                comparison = await loop.run_in_executor(None, compare_email, email_texts, results[0], api_key)
 
             output_path = tmp / "ContractReview.xlsx"
-            export_excel(result_data, comparison, str(output_path), contract_paths)
+            export_excel(results, comparison, str(output_path), fnames)
             excel_bytes = output_path.read_bytes()
 
         _jobs[job_id] = {
             "status": "done",
             "bytes": excel_bytes,
-            "result_data": result_data,
+            "result_data": results[0] if results else {},
             "x_user_id": x_user_id,
             "x_session_id": x_session_id,
             "contract_fnames": [fn for fn, _ in contract_data],
