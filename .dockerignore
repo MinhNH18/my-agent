@@ -1,0 +1,10 @@
+.env
+.env.*
+.greennode.json
+.agentbase/
+*.credentials.json
+__pycache__/
+.git/
+.agentbase-state.json
+venv/
+*.pyc

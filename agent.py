@@ -41,20 +41,33 @@ except ImportError:
     sys.exit("ERROR: pip install openpyxl")
 
 try:
-    import anthropic
+    from openai import OpenAI
 except ImportError:
-    sys.exit("ERROR: pip install anthropic")
+    sys.exit("ERROR: pip install openai")
+
+try:
+    import pdfplumber
+    _PDF_AVAILABLE = True
+except ImportError:
+    _PDF_AVAILABLE = False
+
+try:
+    import extract_msg as _extract_msg
+    _MSG_AVAILABLE = True
+except ImportError:
+    _MSG_AVAILABLE = False
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # CONSTANTS
 # ═════════════════════════════════════════════════════════════════════════════
 
-MODEL          = "claude-opus-4-8"
-MAX_CONTRACT   = 130_000   # chars
-MAX_EMAIL      = 40_000    # chars
-MAX_TOKENS_EXT = 6_000
-MAX_TOKENS_CMP = 4_000
+MODEL          = os.environ.get("LLM_MODEL", "qwen/qwen3-5-27b")
+LLM_BASE_URL   = os.environ.get("LLM_BASE_URL", "https://maas-llm-aiplatform-hcm.api.vngcloud.vn/v1")
+MAX_CONTRACT   = 50_000    # chars — trimmed to stay under 60s gateway timeout
+MAX_EMAIL      = 20_000    # chars
+MAX_TOKENS_EXT = 4_000
+MAX_TOKENS_CMP = 2_000
 
 # Colour palette
 C = {
@@ -241,6 +254,42 @@ def read_eml(path: str) -> str:
     )
 
 
+def read_pdf(path: str) -> str:
+    """Trả về toàn bộ text từ .pdf, bao gồm nội dung bảng."""
+    if not _PDF_AVAILABLE:
+        raise RuntimeError("pdfplumber chưa được cài: pip install pdfplumber")
+    parts: list[str] = []
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text(x_tolerance=2, y_tolerance=2) or ""
+            if text.strip():
+                parts.append(text)
+            for table in page.extract_tables():
+                for row in table:
+                    row_text = " | ".join(cell or "" for cell in row)
+                    if row_text.strip(" |"):
+                        parts.append(f"[TABLE] {row_text}")
+    return "\n".join(parts)
+
+
+def read_msg(path: str) -> str:
+    """Trả về nội dung email Outlook (.msg) dạng plain text."""
+    if not _MSG_AVAILABLE:
+        raise RuntimeError("extract-msg chưa được cài: pip install extract-msg")
+    m = _extract_msg.openMsg(path)
+    subject = m.subject or ""
+    sender  = m.sender or ""
+    to      = m.to or ""
+    date    = str(m.date or "")
+    body    = m.body or ""
+    if body.lstrip().startswith("<"):
+        body = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body))
+    return (
+        f"[EMAIL]\nTừ: {sender}\nGửi đến: {to}\nNgày: {date}\n"
+        f"Tiêu đề: {subject}\n\nNội dung:\n{body}"
+    )
+
+
 def collect_files(
     contracts: list[str],
     emails: list[str],
@@ -249,24 +298,28 @@ def collect_files(
     """Đọc tất cả file, trả về (contract_texts, email_texts)."""
     if folder:
         p = Path(folder)
-        contracts = contracts + [str(f) for f in sorted(p.glob("*.docx"))]
-        emails    = emails    + [str(f) for f in sorted(p.glob("*.eml"))]
+        contracts = contracts + [str(f) for f in sorted(p.glob("*.docx"))] \
+                              + [str(f) for f in sorted(p.glob("*.pdf"))]
+        emails    = emails    + [str(f) for f in sorted(p.glob("*.eml"))] \
+                              + [str(f) for f in sorted(p.glob("*.msg"))]
 
     contract_texts: dict[str, str] = {}
     email_texts:    dict[str, str] = {}
 
     for fp in contracts:
         name = Path(fp).name
+        ext  = Path(fp).suffix.lower()
         try:
-            contract_texts[name] = read_docx(fp)
+            contract_texts[name] = read_pdf(fp) if ext == ".pdf" else read_docx(fp)
             print(f"  ✓ HĐ/PL : {name}")
         except Exception as exc:
             print(f"  ✗ Lỗi   : {name} — {exc}")
 
     for fp in emails:
         name = Path(fp).name
+        ext  = Path(fp).suffix.lower()
         try:
-            email_texts[name] = read_eml(fp)
+            email_texts[name] = read_msg(fp) if ext == ".msg" else read_eml(fp)
             print(f"  ✓ Email : {name}")
         except Exception as exc:
             print(f"  ✗ Lỗi   : {name} — {exc}")
@@ -278,16 +331,19 @@ def collect_files(
 # EXTRACTORS
 # ═════════════════════════════════════════════════════════════════════════════
 
-def _call_claude(prompt: str, api_key: str, max_tokens: int) -> dict:
-    """Gọi Claude API, parse JSON từ response."""
-    client = anthropic.Anthropic(api_key=api_key)
-    response = client.messages.create(
+def _call_llm(prompt: str, api_key: str, max_tokens: int) -> dict:
+    """Gọi LLM API (OpenAI-compatible), parse JSON từ response."""
+    client = OpenAI(api_key=api_key, base_url=LLM_BASE_URL)
+    response = client.chat.completions.create(
         model=MODEL,
         max_tokens=max_tokens,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user",   "content": prompt},
+        ],
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
-    raw = response.content[0].text.strip()
+    raw = response.choices[0].message.content.strip()
     # Strip markdown code fences nếu có
     if "```" in raw:
         raw = raw.split("```")[1]
@@ -303,7 +359,7 @@ def extract_contract(texts: dict[str, str], api_key: str) -> dict:
         full_content += f"\n\n{'='*60}\nTÀI LIỆU: {name}\n{'='*60}\n{text}"
     prompt = EXTRACTION_PROMPT.format(content=full_content[:MAX_CONTRACT])
     print("  → Trích xuất thông tin HĐ...")
-    return _call_claude(prompt, api_key, MAX_TOKENS_EXT)
+    return _call_llm(prompt, api_key, MAX_TOKENS_EXT)
 
 
 def compare_email(
@@ -319,7 +375,7 @@ def compare_email(
         contract_summary=contract_summary,
     )
     print("  → So sánh email vs HĐ...")
-    return _call_claude(prompt, api_key, MAX_TOKENS_CMP)
+    return _call_llm(prompt, api_key, MAX_TOKENS_CMP)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -710,11 +766,11 @@ def export_excel(
 # ═════════════════════════════════════════════════════════════════════════════
 
 def get_api_key() -> str:
-    key = os.environ.get("ANTHROPIC_API_KEY", "")
+    key = os.environ.get("LLM_API_KEY", "")
     if not key:
-        key = input("ANTHROPIC_API_KEY: ").strip()
+        key = input("LLM_API_KEY: ").strip()
     if not key:
-        sys.exit("Cần ANTHROPIC_API_KEY.")
+        sys.exit("Cần LLM_API_KEY.")
     return key
 
 

@@ -1,6 +1,7 @@
 # Secrets
 .env
 .env.*
+.greennode.json
 
 # Python
 __pycache__/
@@ -24,3 +25,4 @@ ContractReview_*.xlsx
 # Temp
 tmp/
 *.tmp
+.agentbase/
