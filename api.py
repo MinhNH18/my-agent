@@ -735,19 +735,17 @@ function buildRisks(risks){
   const ORDER={CAO:0,TRUNG_BINH:1,THAP:2};
   const sorted=[...risks].sort((a,b)=>((ORDER[a.muc_do]??3)-(ORDER[b.muc_do]??3)));
   let html=\'<div style="overflow-x:auto"><table class="risk-tbl"><thead><tr>\'
-    +\'<th style="width:95px">Mức độ</th>\'
-    +\'<th style="width:95px">Loại</th>\'
+    +\'<th style="width:120px">Mức độ / Loại</th>\'
     +\'<th>Mô tả rủi ro</th>\'
-    +\'<th style="width:120px">Điều khoản</th>\'
+    +\'<th style="width:80px;text-align:center">Điều khoản</th>\'
     +\'</tr></thead><tbody>\';
   sorted.forEach(r=>{
     const muc=r.muc_do||\'\';
     const rowCls=muc===\'CAO\'?\' class="risk-cao"\':(muc===\'TRUNG_BINH\'?\' class="risk-tb"\':\'\');
     html+=\'<tr\'+rowCls+\'>\'
-      +\'<td><span class="\'+(MUC_CLS[muc]||\'badge-risk-thap\')+\'">\'+( MUC_LBL[muc]||esc(muc))+\'</span></td>\'
-      +\'<td><span class="badge-risk-type">\'+esc(r.loai_rui_ro||\'\')+\'</span></td>\'
+      +\'<td><span class="\'+(MUC_CLS[muc]||\'badge-risk-thap\')+\'">\'+( MUC_LBL[muc]||esc(muc))+\'</span><br><span class="badge-risk-type" style="display:inline-block;margin-top:5px">\'+esc(r.loai_rui_ro||\'\')+\'</span></td>\'
       +\'<td>\'+esc(r.tom_tat||\'\')+\'</td>\'
-      +\'<td>\'+badge(r.dieu_khoan||null)+\'</td>\'
+      +\'<td style="text-align:center">\'+badge(r.dieu_khoan||null)+\'</td>\'
       +\'</tr>\';
   });
   html+=\'</tbody></table></div>\';
