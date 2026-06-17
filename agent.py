@@ -465,6 +465,191 @@ def _write_row(ws, row: int, label: str, value, alert=False, height: int | None 
 # WRITERS
 # ═════════════════════════════════════════════════════════════════════════════
 
+def write_contract_sheet(ws, data: dict, source_files: list[str]) -> None:
+    """Ghi toàn bộ thông tin hợp đồng vào 1 sheet duy nhất (6 cột)."""
+    NCOLS = 6
+    LAST  = "F"
+    for col, w in zip("ABCDEF", [30, 28, 20, 20, 30, 28]):
+        ws.column_dimensions[col].width = w
+
+    def wr(row, label, value, alert=False, height=None):
+        _label(ws.cell(row, 1), label)
+        ws.merge_cells(f"B{row}:{LAST}{row}")
+        _value(ws.cell(row, 2), value, alert=alert)
+        ws.row_dimensions[row].height = (
+            height if height else (45 if value and len(str(value)) > 120 else 20)
+        )
+
+    def sec(row, text, bg=C["mid_blue"]):
+        ws.merge_cells(f"A{row}:{LAST}{row}")
+        _section(ws.cell(row, 1), text, bg=bg)
+        ws.row_dimensions[row].height = 22
+        return row + 1
+
+    row = 1
+
+    # ── Tiêu đề ──
+    ws.merge_cells(f"A{row}:{LAST}{row}")
+    _header(ws.cell(row, 1), "BẢNG TRÍCH XUẤT THÔNG TIN HỢP ĐỒNG — ZALOPAY FP&A")
+    ws.row_dimensions[row].height = 32; row += 1
+
+    ws.merge_cells(f"A{row}:{LAST}{row}")
+    c = ws.cell(row, 1, value=(
+        f"📅 Ngày xử lý: {datetime.now().strftime('%d/%m/%Y %H:%M')}   |   "
+        f"📄 Nguồn: {', '.join(Path(f).name for f in source_files)}"
+    ))
+    c.font = _font(italic=True, size=9, color="666666")
+    c.alignment = _align(h="left", v="center", wrap=False)
+    ws.row_dimensions[row].height = 16; row += 1
+
+    missing = data.get("truong_con_thieu") or []
+    if missing:
+        ws.merge_cells(f"A{row}:{LAST}{row}")
+        c = ws.cell(row, 1, value=f"⚠️  THÔNG TIN CÒN THIẾU: {' | '.join(missing)}")
+        c.font  = _font(bold=True, size=10, color=C["white"])
+        c.fill  = _fill(C["red_head"])
+        c.alignment = _align(h="left", v="center")
+        ws.row_dimensions[row].height = 22; row += 1
+    row += 1
+
+    # ── 1. Loại HĐ ──
+    row = sec(row, "1.  LOẠI HỢP ĐỒNG")
+    wr(row, "Loại hợp đồng", data.get("loai_hop_dong"), alert=not data.get("loai_hop_dong"))
+    row += 2
+
+    # ── 2. Các bên ──
+    row = sec(row, "2.  CÁC BÊN THAM GIA")
+    for party in data.get("cac_ben") or []:
+        _label(ws.cell(row, 1), f"Bên: {party.get('ten_ben', '')}")
+        ws.merge_cells(f"B{row}:{LAST}{row}")
+        _value(ws.cell(row, 2), party.get("ten_cong_ty"))
+        ws.row_dimensions[row].height = 18; row += 1
+        wr(row, "  Người đại diện",
+           f"{party.get('nguoi_dai_dien','')} — {party.get('chuc_vu','')}"); row += 1
+        if party.get("ma_so_thue"):
+            wr(row, "  MST", party.get("ma_so_thue")); row += 1
+    row += 1
+
+    # ── 3. Thời hạn ──
+    row = sec(row, "3.  THỜI HẠN HỢP ĐỒNG")
+    t = data.get("thoi_han_hop_dong") or {}
+    for lbl, key in [
+        ("Ngày ký",            "ngay_ky"),
+        ("Ngày hiệu lực",      "ngay_hieu_luc"),
+        ("Thời gian hiệu lực", "thoi_gian_hieu_luc"),
+        ("Ngày hết hạn",       "ngay_het_han"),
+        ("Điều kiện gia hạn",  "dieu_kien_gia_han"),
+    ]:
+        wr(row, lbl, t.get(key), alert=not t.get(key)); row += 1
+    row += 1
+
+    # ── 4. Dịch vụ ──
+    row = sec(row, "4.  DỊCH VỤ HỢP TÁC")
+    dv = data.get("dich_vu_hop_tac") or {}
+    wr(row, "Mô tả chung",        dv.get("mo_ta_chung"),        height=55); row += 1
+    wr(row, "Đối tượng tích hợp", dv.get("doi_tuong_tich_hop"));            row += 1
+    wr(row, "Kênh thanh toán",
+       ", ".join(dv.get("kenh_thanh_toan") or []) or None,
+       alert=not dv.get("kenh_thanh_toan")); row += 1
+    wr(row, "Nguồn tiền",
+       ", ".join(dv.get("nguon_tien") or []) or None,
+       alert=not dv.get("nguon_tien")); row += 1
+    row += 1
+
+    # ── 5. Tổng giá trị ──
+    row = sec(row, "5.  TỔNG GIÁ TRỊ HỢP ĐỒNG")
+    ct = data.get("commercial_terms") or {}
+    _label(ws.cell(row, 1), "Tổng giá trị")
+    ws.merge_cells(f"B{row}:{LAST}{row}")
+    c = ws.cell(row, 2, value=ct.get("tong_gia_tri_hop_dong") or "Không xác định trong HĐ")
+    c.font = _font(bold=True, size=11, color=C["dark_blue"])
+    c.alignment = _align(h="left", v="center"); c.border = _thin_border()
+    ws.row_dimensions[row].height = 22; row += 2
+
+    # ── 6. Phí dịch vụ ──
+    row = sec(row, "6.  PHÍ DỊCH VỤ (THEO KÊNH TT / NGUỒN TIỀN)")
+    for col, hdr in enumerate(
+        ["Loại phí","Kênh TT","Nguồn tiền","Mức phí","Điều kiện áp dụng","Ghi chú"], 1
+    ):
+        _tbl_header(ws.cell(row, col), hdr)
+    ws.row_dimensions[row].height = 22; row += 1
+    fees = ct.get("phi_dich_vu") or []
+    if fees:
+        for idx, fee in enumerate(fees):
+            alt = idx % 2 == 1
+            for col, key in enumerate(
+                ["loai_phi","kenh_thanh_toan","nguon_tien","muc_phi","dieu_kien","ghi_chu"], 1
+            ):
+                _tbl_cell(ws.cell(row, col), fee.get(key), alt=alt)
+            ws.row_dimensions[row].height = 35; row += 1
+    else:
+        ws.merge_cells(f"A{row}:{LAST}{row}")
+        c = ws.cell(row, 1, value="⚠️  Không tìm thấy thông tin phí dịch vụ trong hợp đồng")
+        c.font = _font(bold=True, color=C["red_head"], size=10)
+        c.fill = _fill(C["red_light"]); c.border = _thin_border("C00000")
+        ws.row_dimensions[row].height = 22; row += 1
+    row += 1
+
+    # ── 7. Ngân sách KM ──
+    km = ct.get("ngan_sach_khuyen_mai") or {}
+    if km.get("tong_ngan_sach") or km.get("the_le_dieu_kien"):
+        row = sec(row, "7.  NGÂN SÁCH & THỂ LỆ KHUYẾN MẠI")
+        for lbl, key in [("Tổng ngân sách","tong_ngan_sach"),
+                         ("Thể lệ / Điều kiện","the_le_dieu_kien")]:
+            _label(ws.cell(row, 1), lbl)
+            ws.merge_cells(f"B{row}:{LAST}{row}")
+            c = ws.cell(row, 2, value=km.get(key) or "")
+            c.alignment = _align(); c.border = _thin_border()
+            ws.row_dimensions[row].height = 50 if key == "the_le_dieu_kien" else 20; row += 1
+        row += 1
+
+    # ── 8. Lãi & Phạt ──
+    lp = ct.get("lai_va_phat") or {}
+    row = sec(row, "8.  LÃI TRẢ CHẬM & PHẠT VI PHẠM")
+    for lbl, key in [("Lãi trả chậm","lai_tra_cham"),
+                     ("Phạt vi phạm","phat_vi_pham"),
+                     ("Bồi thường thiệt hại","boi_thuong_thiet_hai")]:
+        _label(ws.cell(row, 1), lbl)
+        ws.merge_cells(f"B{row}:{LAST}{row}")
+        c = ws.cell(row, 2, value=lp.get(key) or "—")
+        c.alignment = _align(); c.border = _thin_border()
+        ws.row_dimensions[row].height = 35; row += 1
+    row += 1
+
+    # ── 9. Payment Term ──
+    pt = ct.get("payment_term") or {}
+    row = sec(row, "9.  PAYMENT TERM — ĐIỀU KHOẢN THANH TOÁN")
+    for lbl, key, req in [
+        ("Cơ chế thanh toán",  "co_che_thanh_toan",        True),
+        ("Tạm ứng / TT trước", "tam_ung_thanh_toan_truoc", False),
+        ("Công nợ thanh toán", "cong_no_thanh_toan",       True),
+    ]:
+        wr(row, lbl, pt.get(key), alert=(req and not pt.get(key))); row += 1
+    ho_so = pt.get("ho_so_thanh_toan") or []
+    wr(row, "Hồ sơ thanh toán", ", ".join(ho_so) if ho_so else None, alert=not ho_so); row += 1
+    alert_msg = pt.get("alert_ho_so")
+    if alert_msg:
+        ws.merge_cells(f"A{row}:{LAST}{row}")
+        c = ws.cell(row, 1, value=f"⚠️  {alert_msg}")
+        c.font = _font(bold=True, color=C["white"], size=10)
+        c.fill = _fill(C["red_head"])
+        c.alignment = _align(h="left", v="center"); c.border = _thin_border()
+        ws.row_dimensions[row].height = 22; row += 1
+    row += 1
+
+    # ── 10. Reconciliation ──
+    rt = ct.get("reconciliation_term") or {}
+    row = sec(row, "10. RECONCILIATION TERM — ĐIỀU KHOẢN ĐỐI SOÁT")
+    for lbl, key in [
+        ("Bắt đầu đối soát",    "thoi_gian_bat_dau_doi_soat"),
+        ("Gửi đối soát",         "thoi_gian_gui_doi_soat"),
+        ("Thời hạn phản hồi",    "thoi_gian_phan_hoi"),
+        ("Xử lý chênh lệch",     "xu_ly_chenh_lech"),
+        ("Zalopay xuất hóa đơn", "zalopay_xuat_hoa_don"),
+    ]:
+        wr(row, lbl, rt.get(key), alert=not rt.get(key)); row += 1
+
+
 def write_summary_sheet(ws, data: dict, source_files: list[str]):
     ws.title = "📋 Tóm tắt HĐ"
     ws.column_dimensions["A"].width = 38
@@ -749,25 +934,17 @@ def export_excel(
     output_path: str,
     source_files: list[str],
 ):
-    """Xuất Excel. Nếu results có >1 phần tử, mỗi hợp đồng nhận 3 sheets riêng."""
-    wb   = openpyxl.Workbook()
+    """Xuất Excel: 1 sheet mỗi hợp đồng + 1 sheet so sánh email (nếu có)."""
+    wb    = openpyxl.Workbook()
     multi = len(results) > 1
 
     for i, data in enumerate(results):
         fname = source_files[i] if i < len(source_files) else f"hop_dong_{i+1}.docx"
-        stem  = Path(fname).stem[:18]          # cap cho tên sheet max 31 chars
+        stem  = Path(fname).stem[:28]
 
-        ws_s = wb.active if i == 0 else wb.create_sheet()
-        write_summary_sheet(ws_s, data, [fname])
-        ws_s.title = (f"{i+1}. {stem} - Tóm tắt"[:31] if multi else "📋 Tóm tắt HĐ")
-
-        ws_c = wb.create_sheet()
-        write_commercial_sheet(ws_c, data)
-        ws_c.title = (f"{i+1}. {stem} - Commercial"[:31] if multi else "💰 Commercial Terms")
-
-        ws_p = wb.create_sheet()
-        write_payment_sheet(ws_p, data)
-        ws_p.title = (f"{i+1}. {stem} - Payment"[:31] if multi else "🏦 Payment & Recon")
+        ws = wb.active if i == 0 else wb.create_sheet()
+        ws.title = (f"{i+1}. {stem}"[:31] if multi else "📋 Hợp đồng")
+        write_contract_sheet(ws, data, [fname])
 
     if comparison:
         write_comparison_sheet(wb.create_sheet(), comparison)
