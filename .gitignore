@@ -18,9 +18,10 @@ ContractReview_*.xlsx
 # macOS
 .DS_Store
 
-# IDE
+# IDE & Claude Code local settings (may contain secrets)
 .vscode/
 .idea/
+.claude/
 
 # Temp
 tmp/
