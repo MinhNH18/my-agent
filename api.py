@@ -355,7 +355,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;ba
 .ctab.active{background:#fff;color:var(--zb);border-color:var(--zbo);border-bottom-color:#fff;box-shadow:0 -2px 0 0 var(--zb)}
 .cpanel{display:none}
 .cpanel.active{display:block}
-.missing-banner{background:#FFF5F3;border:1px solid #FFBDAD;color:var(--zer);border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;font-weight:500}
+.missing-banner{background:#FFFBEB;border:1px solid #FCD34D;color:#92400E;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:14px;font-weight:500}
 /* sections (accordion) */
 .sec{border:1px solid var(--zbo);border-radius:8px;margin-bottom:10px;overflow:hidden}
 .sec-hd{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#F9FAFB;cursor:pointer;font-size:13px;font-weight:700;color:var(--zn);user-select:none;transition:background .15s}
@@ -367,33 +367,42 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;ba
 .sec.open .sec-bd{display:block}
 /* data table */
 .dtable{width:100%;border-collapse:collapse;font-size:13px}
-.dtable td{padding:9px 13px;border-bottom:1px solid var(--zbo);vertical-align:top;line-height:1.5}
+.dtable td{padding:11px 14px;border-bottom:1px solid var(--zbo);vertical-align:top;line-height:1.6}
 .dtable tr:last-child td{border-bottom:none}
-.td-lbl{width:200px;font-weight:600;color:#374151;background:#FAFAFA;white-space:nowrap}
+.td-lbl{width:185px;font-weight:600;color:#374151;background:#FAFAFA;white-space:nowrap;font-size:12px}
 .td-val{color:#111827;word-break:break-word}
 .td-val.null{color:#9CA3AF;font-style:italic}
 .td-val.bad{background:#FFF5F3;color:var(--zer)}
-.td-ref{width:130px;text-align:right;white-space:nowrap}
+.row-ref{display:inline-block;margin-left:7px;vertical-align:middle}
+.recon-hdr td{background:var(--zbl);padding:7px 14px;font-size:12px;font-weight:700;color:var(--zb)}
 .dtable tr.alert-row td{background:#FFF5F3;color:var(--zer);font-size:12px;font-weight:500}
 /* citation badge */
 .ref{display:inline-block;background:var(--zbl);color:var(--zb);border:1px solid var(--zbm);border-radius:5px;font-size:11px;font-weight:600;padding:2px 7px;white-space:nowrap}
 /* fee table */
 .fee-wrap{overflow-x:auto;padding:0}
 .fee-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
-.fee-tbl th{padding:8px 10px;background:var(--zb);color:#fff;font-weight:600;text-align:left;white-space:nowrap}
-.fee-tbl td{padding:8px 10px;border-bottom:1px solid var(--zbo);vertical-align:top;word-break:break-word}
+.fee-tbl th{padding:9px 12px;background:var(--zb);color:#fff;font-weight:600;text-align:left;white-space:nowrap}
+.fee-tbl td{padding:9px 12px;border-bottom:1px solid var(--zbo);vertical-align:top;word-break:break-word}
 .fee-tbl tr.alt td{background:#F9FAFB}
 .fee-tbl .fee-bold{font-weight:700;color:var(--zb)}
 .fee-tbl tr:last-child td{border-bottom:none}
 .no-fee{padding:14px 16px;color:var(--zer);font-size:13px;background:#FFF5F3;border-top:1px solid var(--zbo)}
 /* comparison */
+.cmp-summary{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--zbo);background:#FAFAFA}
+.cmp-wrap{overflow-x:auto}
 .cmp-tbl{width:100%;border-collapse:collapse;font-size:13px}
-.cmp-tbl th{padding:9px 12px;background:var(--zn);color:#fff;font-weight:600;text-align:left}
-.cmp-tbl td{padding:9px 12px;border-bottom:1px solid var(--zbo);vertical-align:top}
+.cmp-tbl th{padding:9px 12px;background:var(--zn);color:#fff;font-weight:600;text-align:left;font-size:12px}
+.cmp-tbl td{padding:10px 12px;border-bottom:1px solid var(--zbo);vertical-align:top;line-height:1.5}
 .cmp-tbl tr:last-child td{border-bottom:none}
-.badge-match{background:var(--zgl);color:var(--zgd);border-radius:5px;font-size:11px;font-weight:700;padding:2px 8px}
-.badge-diff{background:#FFF5F3;color:var(--zer);border-radius:5px;font-size:11px;font-weight:700;padding:2px 8px}
-.badge-only{background:var(--zbl);color:var(--zb);border-radius:5px;font-size:11px;font-weight:700;padding:2px 8px}
+.cmp-row-pending td{background:#FFFBEB}
+.cmp-row-pending td:first-child{border-left:3px solid #F59E0B}
+.cmp-row-diff td{background:#FFF9F9}
+.cmp-row-diff td:first-child{border-left:3px solid var(--zer)}
+.badge-match{background:var(--zgl);color:var(--zgd);border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px}
+.badge-diff{background:#FFF5F3;color:var(--zer);border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px}
+.badge-only{background:var(--zbl);color:var(--zb);border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px}
+.badge-gray{background:#F3F4F6;color:#374151;border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px}
+.badge-pending{background:#FEF3C7;color:#92400E;border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px;border:1px solid #FCD34D}
 .cmp-note{margin-top:12px;padding:12px 14px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;font-size:13px;color:#92400E}
 /* custom answers */
 .qa-item{padding:14px 16px;border-bottom:1px solid var(--zbo)}
@@ -543,15 +552,13 @@ function val(v){if(v==null||v==='')return null;if(Array.isArray(v))return v.join
 function badge(r){if(!r)return'';return '<span class="ref">'+esc(r)+'</span>';}
 function rowHtml(label,v,ref,isBad){
   const d=val(v);
-  const cls=d==null?'null':'';const badCls=isBad?' bad':'';
-  return '<tr>'
-    +'<td class="td-lbl">'+esc(label)+'</td>'
-    +'<td class="td-val '+cls+badCls+'">'+(d==null?'<em>—</em>':esc(d))+'</td>'
-    +'<td class="td-ref">'+badge(ref)+'</td>'
-    +'</tr>';
+  const nullCls=d==null?' null':'';const badCls=isBad?' bad':'';
+  const refHtml=ref?'<span class="row-ref">'+badge(ref)+'</span>':'';
+  return '<tr><td class="td-lbl">'+esc(label)+'</td>'
+    +'<td class="td-val'+nullCls+badCls+'">'+(d==null?'<em>—</em>':esc(d))+refHtml+'</td></tr>';
 }
 function sec(title,inner,open){
-  return '<div class="sec'+(open?' open':'')+'"><div class="sec-hd" onclick="this.parentElement.classList.toggle(\'open\')"><span>'+esc(title)+'</span><span class="caret">&#9658;</span></div><div class="sec-bd">'+inner+'</div></div>';
+  return '<div class="sec'+(open?' open':'')+'"><div class="sec-hd" onclick="this.parentElement.classList.toggle(\\'open\\')"><span>'+esc(title)+'</span><span class="caret">&#9658;</span></div><div class="sec-bd">'+inner+'</div></div>';
 }
 // ── file store ────────────────────────────────────────────────────────
 const ICONS={pdf:'📄',docx:'📝',eml:'📩',msg:'📨'};
@@ -567,7 +574,7 @@ function renderList(id){
     return '<li><span style="font-size:14px">'+( ICONS[ext]||'📄')+'</span>'
       +'<span class="fn" title="'+esc(f.name)+'">'+esc(f.name)+'</span>'
       +'<span class="fsz">'+sz+'</span>'
-      +'<button class="del" onclick="rmFile(\''+id+'\','+i+')" title="Xoá">×</button></li>';
+      +'<button class="del" onclick="rmFile(\\''+id+'\\','+i+')" title="Xoá">×</button></li>';
   }).join('');
 }
 function addFiles(id,files){const ns=new Set(_store[id].map(f=>f.name));Array.from(files).forEach(f=>{if(!ns.has(f.name)){_store[id].push(f);ns.add(f.name);}});syncInput(id);renderList(id);}
@@ -694,8 +701,8 @@ function buildContract(c){
   s3+=rowHtml('Tạm ứng / TT trước',pt.tam_ung_thanh_toan_truoc,null,false);
   s3+=rowHtml('Công nợ thanh toán',pt.cong_no_thanh_toan,null,!pt.cong_no_thanh_toan);
   s3+=rowHtml('Hồ sơ thanh toán',(pt.ho_so_thanh_toan||[]).join(', ')||null,null,!(pt.ho_so_thanh_toan||[]).length);
-  if(pt.alert_ho_so)s3+='<tr class="alert-row"><td colspan="3">⚠️ '+esc(pt.alert_ho_so)+'</td></tr>';
-  s3+='<tr><td colspan="3" style="background:var(--zbl);padding:6px 13px;font-size:12px;font-weight:700;color:var(--zb)">Reconciliation Term</td></tr>';
+  if(pt.alert_ho_so)s3+='<tr class="alert-row"><td colspan="2">⚠️ '+esc(pt.alert_ho_so)+'</td></tr>';
+  s3+='<tr class="recon-hdr"><td colspan="2">Reconciliation Term</td></tr>';
   s3+=rowHtml('Bắt đầu đối soát',rt.thoi_gian_bat_dau_doi_soat,refs['commercial_terms.reconciliation_term'],!rt.thoi_gian_bat_dau_doi_soat);
   s3+=rowHtml('Gửi đối soát',rt.thoi_gian_gui_doi_soat,null,false);
   s3+=rowHtml('Thời hạn phản hồi',rt.thoi_gian_phan_hoi,null,false);
@@ -706,10 +713,33 @@ function buildContract(c){
   return html;
 }
 function buildComparison(cmp){
-  let html='<div style="overflow-x:auto"><table class="cmp-tbl"><thead><tr><th>Điểm so sánh</th><th>Trong Email</th><th>Trong HĐ</th><th>Trạng thái</th><th>Ghi chú</th></tr></thead><tbody>';
-  (cmp.ket_qua_so_sanh||[]).forEach(r=>{
-    const cls=r.trang_thai==='KHỚP'?'badge-match':r.trang_thai==='KHÁC BIỆT'?'badge-diff':'badge-only';
-    html+='<tr><td>'+esc(r.diem_so_sanh||'')+'</td><td>'+esc(r.trong_email||'')+'</td><td>'+esc(r.trong_hop_dong||'')+'</td><td><span class="'+cls+'">'+esc(r.trang_thai||'')+'</span></td><td>'+esc(r.ghi_chu||'')+'</td></tr>';
+  const rows=cmp.ket_qua_so_sanh||[];
+  const ST_LABEL={KHOP:'KHỚP',KHAC_BIET:'KHÁC BIỆT',CHI_EMAIL:'CHỈ TRONG EMAIL',CHI_HD:'CHỈ TRONG HĐ',CHUA_PHAN_HOI:'CHƯA PHẢN HỒI'};
+  const ST_CLS={KHOP:'badge-match',KHAC_BIET:'badge-diff',CHI_EMAIL:'badge-only',CHI_HD:'badge-gray',CHUA_PHAN_HOI:'badge-pending'};
+  // normalise legacy Vietnamese status values
+  function norm(s){const m={'KHỚP':'KHOP','KHÁC BIỆT':'KHAC_BIET','CHỈ TRONG EMAIL':'CHI_EMAIL','CHỈ TRONG HĐ':'CHI_HD','CHƯA PHẢN HỒI':'CHUA_PHAN_HOI'};return m[s]||s;}
+  const cnt={};rows.forEach(r=>{const k=norm(r.trang_thai||'');cnt[k]=(cnt[k]||0)+1;});
+  let sumHtml='<div class="cmp-summary">';
+  ['CHUA_PHAN_HOI','KHAC_BIET','CHI_EMAIL','CHI_HD','KHOP'].forEach(k=>{
+    if(cnt[k])sumHtml+='<span class="'+(ST_CLS[k]||'badge-only')+'">'+cnt[k]+'&nbsp;'+(ST_LABEL[k]||k)+'</span>';
+  });
+  sumHtml+='</div>';
+  const ORDER={CHUA_PHAN_HOI:0,KHAC_BIET:1,CHI_EMAIL:2,CHI_HD:3,KHOP:4};
+  const sorted=[...rows].sort((a,b)=>((ORDER[norm(a.trang_thai)]??5)-(ORDER[norm(b.trang_thai)]??5)));
+  let html=sumHtml+'<div class="cmp-wrap"><table class="cmp-tbl"><thead><tr>'
+    +'<th style="width:148px">Trạng thái</th><th>Điểm so sánh</th>'
+    +'<th>Trong Email</th><th>Trong HĐ</th><th>Ghi chú</th>'
+    +'</tr></thead><tbody>';
+  sorted.forEach(r=>{
+    const st=norm(r.trang_thai||'');
+    const rowCls=st==='CHUA_PHAN_HOI'?' class="cmp-row-pending"':st==='KHAC_BIET'?' class="cmp-row-diff"':'';
+    html+='<tr'+rowCls+'>'
+      +'<td><span class="'+(ST_CLS[st]||'badge-only')+'">'+(ST_LABEL[st]||esc(r.trang_thai||''))+'</span></td>'
+      +'<td><strong>'+esc(r.diem_so_sanh||'')+'</strong></td>'
+      +'<td>'+esc(r.trong_email||'—')+'</td>'
+      +'<td>'+esc(r.trong_hop_dong||'—')+'</td>'
+      +'<td style="color:#6B7280;font-style:italic">'+esc(r.ghi_chu||'')+'</td>'
+      +'</tr>';
   });
   html+='</tbody></table></div>';
   if(cmp.tong_ket)html+='<div class="cmp-note">📋 '+esc(cmp.tong_ket)+'</div>';
@@ -728,7 +758,7 @@ async function loadHistory(){
     el.innerHTML=items.map(it=>{
       const fnames=(it.filenames||[]).join(', ')||'—';
       const dt=it.created_at?new Date(it.created_at).toLocaleString('vi-VN',{dateStyle:'short',timeStyle:'short'}):'';
-      return '<div class="hist-item" onclick="viewReview(\''+esc(it.id)+'\')"><div class="hist-ic">📋</div><div class="hist-body"><div class="hist-fnames" title="'+esc(fnames)+'">'+esc(fnames)+'</div><div class="hist-date">'+esc(dt)+'</div></div></div>';
+      return '<div class="hist-item" onclick="viewReview(\\''+esc(it.id)+'\\')"><div class="hist-ic">📋</div><div class="hist-body"><div class="hist-fnames" title="'+esc(fnames)+'">'+esc(fnames)+'</div><div class="hist-date">'+esc(dt)+'</div></div></div>';
     }).join('');
   }catch(e){document.getElementById('histList').innerHTML='<div class="hist-empty">Không tải được lịch sử</div>';}
 }
