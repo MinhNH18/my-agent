@@ -403,6 +403,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif;ba
 .badge-only{background:var(--zbl);color:var(--zb);border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px}
 .badge-gray{background:#F3F4F6;color:#374151;border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px}
 .badge-pending{background:#FEF3C7;color:#92400E;border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px;border:1px solid #FCD34D}
+/* risk table */
+.risk-tbl{width:100%;border-collapse:collapse;font-size:13px}
+.risk-tbl th{padding:9px 12px;background:var(--zn);color:rgba(255,255,255,.9);font-weight:600;text-align:left;font-size:12px}
+.risk-tbl td{padding:10px 12px;border-bottom:1px solid var(--zbo);vertical-align:top;line-height:1.5}
+.risk-tbl tr:last-child td{border-bottom:none}
+.risk-tbl tr.risk-cao td{background:#FFF5F3}
+.risk-tbl tr.risk-cao td:first-child{border-left:3px solid var(--zer)}
+.risk-tbl tr.risk-tb td{background:#FFFBEB}
+.risk-tbl tr.risk-tb td:first-child{border-left:3px solid #F59E0B}
+.badge-risk-cao{background:#FEE2E2;color:#991B1B;border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px}
+.badge-risk-tb{background:#FEF3C7;color:#92400E;border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px}
+.badge-risk-thap{background:#F3F4F6;color:#374151;border-radius:5px;font-size:11px;font-weight:700;padding:3px 9px}
+.badge-risk-type{background:var(--zbl);color:var(--zb);border-radius:4px;font-size:10px;font-weight:600;padding:2px 6px;white-space:nowrap}
+.no-risk{padding:14px 16px;color:var(--zgd);font-size:13px;background:var(--zgl)}
 .cmp-note{margin-top:12px;padding:12px 14px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:8px;font-size:13px;color:#92400E}
 /* custom answers */
 .qa-item{padding:14px 16px;border-bottom:1px solid var(--zbo)}
@@ -710,6 +724,33 @@ function buildContract(c){
   s3+=rowHtml('Zalopay xuất hóa đơn',rt.zalopay_xuat_hoa_don,null,false);
   s3+='</table>';
   html+=sec('3. Payment & Reconciliation Term',s3,true);
+  // S4 — Risk Assessment
+  html+=sec('4. ⚠️ Đánh giá rủi ro cho Zalopay',buildRisks(d.danh_gia_rui_ro),true);
+  return html;
+}
+function buildRisks(risks){
+  if(!risks||!risks.length)return '<div class="no-risk">✅ Không phát hiện điều khoản rủi ro đáng kể cho Zalopay.</div>';
+  const MUC_CLS={CAO:'badge-risk-cao',TRUNG_BINH:'badge-risk-tb',THAP:'badge-risk-thap'};
+  const MUC_LBL={CAO:'CAO',TRUNG_BINH:'TRUNG BÌNH',THAP:'THẤP'};
+  const ORDER={CAO:0,TRUNG_BINH:1,THAP:2};
+  const sorted=[...risks].sort((a,b)=>((ORDER[a.muc_do]??3)-(ORDER[b.muc_do]??3)));
+  let html=\'<div style="overflow-x:auto"><table class="risk-tbl"><thead><tr>\'
+    +\'<th style="width:95px">Mức độ</th>\'
+    +\'<th style="width:95px">Loại</th>\'
+    +\'<th>Mô tả rủi ro</th>\'
+    +\'<th style="width:120px">Điều khoản</th>\'
+    +\'</tr></thead><tbody>\';
+  sorted.forEach(r=>{
+    const muc=r.muc_do||\'\';
+    const rowCls=muc===\'CAO\'?\' class="risk-cao"\':(muc===\'TRUNG_BINH\'?\' class="risk-tb"\':\'\');
+    html+=\'<tr\'+rowCls+\'>\'
+      +\'<td><span class="\'+(MUC_CLS[muc]||\'badge-risk-thap\')+\'">\'+( MUC_LBL[muc]||esc(muc))+\'</span></td>\'
+      +\'<td><span class="badge-risk-type">\'+esc(r.loai_rui_ro||\'\')+\'</span></td>\'
+      +\'<td>\'+esc(r.tom_tat||\'\')+\'</td>\'
+      +\'<td>\'+badge(r.dieu_khoan||null)+\'</td>\'
+      +\'</tr>\';
+  });
+  html+=\'</tbody></table></div>\';
   return html;
 }
 function buildComparison(cmp){
