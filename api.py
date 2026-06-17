@@ -18,6 +18,7 @@ Biến môi trường:
 
 from __future__ import annotations
 
+import asyncio
 import os
 import tempfile
 import uuid
@@ -25,7 +26,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, Header, HTTPException, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # Import các hàm từ agent.py
@@ -60,6 +61,63 @@ app.add_middleware(
 )
 
 security = HTTPBearer(auto_error=False)
+
+# In-memory job store: job_id → {status, bytes?, error?, result_data?}
+_jobs: dict[str, dict] = {}
+
+
+# ─── Background analysis task ─────────────────────────────────────────────────
+
+async def _run_analysis(
+    job_id: str,
+    contract_data: list[tuple[str, bytes]],
+    email_data: list[tuple[str, bytes]],
+    api_key: str,
+    x_user_id: str | None,
+    x_session_id: str | None,
+) -> None:
+    loop = asyncio.get_running_loop()
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+
+            contract_paths: list[str] = []
+            for fname, data in contract_data:
+                p = tmp / (fname or f"contract_{uuid.uuid4().hex}")
+                p.write_bytes(data)
+                contract_paths.append(str(p))
+
+            email_paths: list[str] = []
+            for fname, data in email_data:
+                p = tmp / (fname or f"email_{uuid.uuid4().hex}")
+                p.write_bytes(data)
+                email_paths.append(str(p))
+
+            contract_texts, email_texts = collect_files(contract_paths, email_paths, None)
+            if not contract_texts:
+                _jobs[job_id] = {"status": "error", "error": "Không đọc được nội dung từ các file hợp đồng."}
+                return
+
+            result_data = await loop.run_in_executor(None, extract_contract, contract_texts, api_key)
+
+            comparison = None
+            if email_texts:
+                comparison = await loop.run_in_executor(None, compare_email, email_texts, result_data, api_key)
+
+            output_path = tmp / "ContractReview.xlsx"
+            export_excel(result_data, comparison, str(output_path), contract_paths)
+            excel_bytes = output_path.read_bytes()
+
+        _jobs[job_id] = {
+            "status": "done",
+            "bytes": excel_bytes,
+            "result_data": result_data,
+            "x_user_id": x_user_id,
+            "x_session_id": x_session_id,
+            "contract_fnames": [fn for fn, _ in contract_data],
+        }
+    except Exception as exc:
+        _jobs[job_id] = {"status": "error", "error": str(exc)}
 
 
 # ─── Memory helper ────────────────────────────────────────────────────────────
@@ -727,29 +785,52 @@ async function analyze() {
   Array.from(contracts).forEach(f => fd.append('contracts', f));
   Array.from(document.getElementById('emailInput').files).forEach(f => fd.append('emails', f));
 
+  const done = (ok, msg) => {
+    btn.disabled = false;
+    hide('statusLoading');
+    stopSteps(ok);
+    if (ok) show('statusSuccess', msg);
+    else     show('statusError',   msg);
+  };
+
   try {
-    const res = await fetch('/analyze', { method: 'POST', body: fd });
-    if (!res.ok) {
-      const txt = await res.text();
+    /* Bước 1: submit job — nhận job_id ngay lập tức */
+    const submitRes = await fetch('/analyze', { method: 'POST', body: fd });
+    if (!submitRes.ok) {
+      const txt = await submitRes.text();
       let msg = txt;
       try { msg = JSON.parse(txt).detail || txt; } catch {}
-      stopSteps(false);
-      show('statusError', '❌  ' + msg);
-    } else {
+      done(false, '❌  ' + msg);
+      return;
+    }
+    const { job_id } = await submitRes.json();
+
+    /* Bước 2: poll /result/{job_id} mỗi 3 giây (tối đa 5 phút) */
+    for (let i = 0; i < 100; i++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const res = await fetch('/result/' + job_id);
+      if (res.status === 202) continue;   /* đang xử lý */
+
+      if (!res.ok) {
+        const txt = await res.text();
+        let msg = txt;
+        try { msg = JSON.parse(txt).detail || txt; } catch {}
+        done(false, '❌  ' + msg);
+        return;
+      }
+
+      /* 200 — tải file */
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href = url; a.download = 'ContractReview.xlsx'; a.click();
       URL.revokeObjectURL(url);
-      stopSteps(true);
-      show('statusSuccess', '✅  Phân tích thành công! File ContractReview.xlsx đã được tải về máy.');
+      done(true, '✅  Phân tích thành công! File ContractReview.xlsx đã được tải về máy.');
+      return;
     }
+    done(false, '❌  Timeout: phân tích mất quá lâu, vui lòng thử lại.');
   } catch (err) {
-    stopSteps(false);
-    show('statusError', '❌  Lỗi kết nối: ' + err.message);
-  } finally {
-    btn.disabled = false;
-    hide('statusLoading');
+    done(false, '❌  Lỗi kết nối: ' + err.message);
   }
 }
 </script>
@@ -775,40 +856,29 @@ def health_check():
 @app.post(
     "/analyze",
     tags=["Contract Review"],
-    summary="Trích xuất thông tin hợp đồng",
-    response_description="File Excel chứa thông tin hợp đồng đã trích xuất",
+    summary="Trích xuất thông tin hợp đồng (async)",
+    response_description="Job ID để poll kết quả tại GET /result/{job_id}",
+    status_code=202,
 )
 async def analyze(
     contracts: list[UploadFile] = File(
         ...,
-        description="Hợp đồng chính và các phụ lục (.docx). Có thể upload nhiều file.",
+        description="Hợp đồng chính và các phụ lục (.docx / .pdf). Có thể upload nhiều file.",
     ),
     emails: list[UploadFile] = File(
         default=[],
-        description="(Tuỳ chọn) Email alignment (.eml) để so sánh với hợp đồng.",
+        description="(Tuỳ chọn) Email alignment (.eml / .msg) để so sánh với hợp đồng.",
     ),
     credentials: HTTPAuthorizationCredentials | None = Security(security),
     x_user_id: str | None = Header(default=None, alias="X-GreenNode-AgentBase-User-Id"),
     x_session_id: str | None = Header(default=None, alias="X-GreenNode-AgentBase-Session-Id"),
 ):
     """
-    Upload hợp đồng Word và (tuỳ chọn) email alignment để nhận file Excel phân tích.
-
-    **Quy trình:**
-    1. Đọc nội dung tất cả file .docx (hợp đồng + phụ lục)
-    2. Gọi Claude API để trích xuất thông tin có cấu trúc
-    3. Nếu có file .eml: so sánh email alignment với hợp đồng
-    4. Xuất file Excel 4 sheet và trả về để download
-
-    **Output Excel gồm:**
-    - 📋 Tóm tắt HĐ — Loại HĐ, Các bên, Thời hạn, Dịch vụ, Tổng giá trị
-    - 💰 Commercial Terms — Bảng phí, Ngân sách KM, Lãi & Phạt
-    - 🏦 Payment & Recon — Cơ chế TT, Công nợ, Đối soát
-    - 📧 Email vs HĐ — So sánh điểm khác biệt *(chỉ khi có file .eml)*
+    Bắt đầu phân tích hợp đồng trong nền. Trả về `job_id` ngay lập tức (202).
+    Poll kết quả tại **GET /result/{job_id}** — trả 202 khi đang xử lý, 200 + file Excel khi xong.
     """
     verify_auth(credentials)
 
-    # Validate file types
     for f in contracts:
         if not (f.filename or "").lower().endswith((".docx", ".pdf")):
             raise HTTPException(400, f"File '{f.filename}' phải là .docx hoặc .pdf")
@@ -820,73 +890,67 @@ async def analyze(
     if not api_key:
         raise HTTPException(500, "LLM_API_KEY chưa được cấu hình trên server.")
 
-    # Lưu upload vào temp dir
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp = Path(tmpdir)
+    # Đọc bytes trước khi UploadFile bị đóng
+    contract_data = [(f.filename or f"contract_{uuid.uuid4().hex}.docx", await f.read()) for f in contracts]
+    email_data    = [(f.filename or f"email_{uuid.uuid4().hex}.eml",     await f.read()) for f in emails]
 
-        contract_paths: list[str] = []
-        for upload in contracts:
-            dest = tmp / (upload.filename or f"contract_{uuid.uuid4().hex}.docx")
-            dest.write_bytes(await upload.read())
-            contract_paths.append(str(dest))
+    job_id = str(uuid.uuid4())
+    _jobs[job_id] = {"status": "processing"}
 
-        email_paths: list[str] = []
-        for upload in emails:
-            dest = tmp / (upload.filename or f"email_{uuid.uuid4().hex}.eml")
-            dest.write_bytes(await upload.read())
-            email_paths.append(str(dest))
+    asyncio.create_task(_run_analysis(job_id, contract_data, email_data, api_key, x_user_id, x_session_id))
 
-        # Đọc nội dung
-        contract_texts, email_texts = collect_files(contract_paths, email_paths, None)
-        if not contract_texts:
-            raise HTTPException(422, "Không đọc được nội dung từ các file hợp đồng.")
+    return JSONResponse({"job_id": job_id, "status": "processing"}, status_code=202)
 
-        # Phân tích
-        try:
-            data = extract_contract(contract_texts, api_key)
-        except Exception as exc:
-            raise HTTPException(502, f"Lỗi Claude API (extraction): {exc}") from exc
 
-        comparison = None
-        if email_texts:
-            try:
-                comparison = compare_email(email_texts, data, api_key)
-            except Exception as exc:
-                raise HTTPException(502, f"Lỗi Claude API (comparison): {exc}") from exc
+@app.get(
+    "/result/{job_id}",
+    tags=["Contract Review"],
+    summary="Lấy kết quả phân tích",
+)
+async def get_result(job_id: str):
+    """
+    Poll kết quả của job. Trả **202** khi đang xử lý, **200 + file Excel** khi xong, **500** nếu lỗi.
+    """
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Job không tồn tại hoặc đã hết hạn.")
 
-        # Xuất Excel ra file tạm ngoài tmpdir (để không bị xoá trước khi gửi)
-        output_path = tmp / "ContractReview.xlsx"
-        export_excel(data, comparison, str(output_path), contract_paths)
+    if job["status"] == "processing":
+        return JSONResponse({"status": "processing"}, status_code=202)
 
-        # Đọc vào memory trước khi tmpdir bị dọn
-        excel_bytes = output_path.read_bytes()
+    if job["status"] == "error":
+        error = job.get("error", "Unknown error")
+        del _jobs[job_id]
+        raise HTTPException(500, f"Lỗi phân tích: {error}")
 
-    # Log phân tích vào AgentBase Memory (best-effort)
+    # Done — trả file và log memory
+    excel_bytes  = job["bytes"]
+    result_data  = job.get("result_data", {})
+    x_user_id    = job.get("x_user_id")
+    x_session_id = job.get("x_session_id")
+    fnames       = job.get("contract_fnames", [])
+    del _jobs[job_id]
+
     if x_user_id:
-        filenames = ", ".join(f.filename or "unknown" for f in contracts)
         parties = "; ".join(
-            b.get("ten_cong_ty", "") for b in (data.get("cac_ben") or []) if b.get("ten_cong_ty")
+            b.get("ten_cong_ty", "") for b in (result_data.get("cac_ben") or []) if b.get("ten_cong_ty")
         )
-        missing = ", ".join(data.get("truong_con_thieu") or []) or "Không có"
+        missing = ", ".join(result_data.get("truong_con_thieu") or []) or "Không có"
         summary = (
-            f"Loại HĐ: {data.get('loai_hop_dong') or 'N/A'}\n"
+            f"Loại HĐ: {result_data.get('loai_hop_dong') or 'N/A'}\n"
             f"Các bên: {parties or 'N/A'}\n"
-            f"Ngày ký: {(data.get('thoi_han_hop_dong') or {}).get('ngay_ky') or 'N/A'}\n"
-            f"Hết hạn: {(data.get('thoi_han_hop_dong') or {}).get('ngay_het_han') or 'N/A'}\n"
+            f"Ngày ký: {(result_data.get('thoi_han_hop_dong') or {}).get('ngay_ky') or 'N/A'}\n"
+            f"Hết hạn: {(result_data.get('thoi_han_hop_dong') or {}).get('ngay_het_han') or 'N/A'}\n"
             f"Trường thiếu: {missing}"
         )
-        session = x_session_id or str(uuid.uuid4())
         await _log_to_memory(
             user_id=x_user_id,
-            session_id=session,
-            user_msg=f"Phân tích hợp đồng: {filenames}",
+            session_id=x_session_id or str(uuid.uuid4()),
+            user_msg=f"Phân tích hợp đồng: {', '.join(fnames)}",
             assistant_msg=summary,
         )
 
-    # Ghi ra file tạm tồn tại độc lập để FileResponse đọc được
-    result_file = tempfile.NamedTemporaryFile(
-        delete=False, suffix=".xlsx", prefix="ContractReview_"
-    )
+    result_file = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx", prefix="ContractReview_")
     result_file.write(excel_bytes)
     result_file.close()
 
@@ -894,5 +958,4 @@ async def analyze(
         path=result_file.name,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         filename="ContractReview.xlsx",
-        background=None,
     )
