@@ -1,6 +1,23 @@
 # Contract Review Agent — Zalopay FP&A
 
-AI agent tự động trích xuất thông tin quan trọng từ hợp đồng Word (.docx) và email alignment (.eml), xuất kết quả ra file Excel có format sẵn cho FP&A review.
+## Vấn đề
+
+FP&A tại Zalopay phải phê duyệt nhiều hợp đồng với các điều khoản thương mại đa dạng — phí dịch vụ, payment term, reconciliation term, điều kiện gia hạn... Việc đọc và trích xuất thủ công từng hợp đồng tốn thời gian, đồng thời cần đối chiếu xem nội dung hợp đồng đã phản ánh đúng những gì FP&A đã approve qua email chưa.
+
+## Người dùng mục tiêu
+
+Nhân viên FP&A tại Zalopay — những người trực tiếp review và phê duyệt điều khoản thương mại với các đối tác.
+
+## Cách agent giải quyết
+
+- **Input:** File hợp đồng (.docx / .pdf) và email trao đổi thương mại (.eml / .msg)
+- **Xử lý:** Claude AI đọc toàn bộ hợp đồng, trích xuất có cấu trúc các điều khoản quan trọng, đánh giá rủi ro theo góc nhìn FP&A, và so sánh với nội dung đã approved trong email
+- **Output:** Kết quả hiển thị trực tiếp trên UI kèm dẫn chiếu điều khoản, file Excel để lưu hồ sơ, chatbot hỏi đáp về hợp đồng
+- Được host trên AgentBase dưới dạng REST API
+
+## Giá trị mang lại
+
+Mỗi hợp đồng từ 30–60 phút đọc thủ công rút xuống còn ~1 phút. Team giảm thời gian tổng hợp, hạn chế bỏ sót điều khoản bất lợi, và có cơ sở đối chiếu rõ ràng giữa hợp đồng ký kết và những gì FP&A đã approve.
 
 ---
 
