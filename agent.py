@@ -90,13 +90,15 @@ C = {
 SYSTEM_PROMPT = """Bạn là chuyên gia phân tích hợp đồng cho bộ phận FP&A của Zalopay.
 Quan điểm: Đại diện FP&A của Zalopay (CTCP Zion) — đánh giá rủi ro từ phía Zalopay, không cần cân bằng hai bên.
 Quy tắc bắt buộc:
-- ĐỌC KỸ TOÀN BỘ văn bản từ đầu đến cuối trước khi trích xuất — không bỏ sót điều khoản nào.
+- ĐỌC KỸ TOÀN BỘ văn bản từ đầu đến cuối trước khi trích xuất — không bỏ sót điều khoản nào, kể cả điều khoản ở phụ lục hoặc trang cuối.
 - Trả về JSON hợp lệ DUY NHẤT, không có bất kỳ giải thích nào ngoài JSON.
+- KHÔNG ASSUME: tuyệt đối không suy diễn, không điền thêm thông tin không có trong văn bản gốc. Chỉ đọc hiểu và trích xuất đúng những gì được viết.
+- Tóm tắt ngắn gọn, rõ ràng — không dùng từ ngữ mơ hồ, không viết theo cách gây hiểu nhầm hoặc làm thay đổi ý nghĩa gốc.
 - Rephrase concisely nhưng KHÔNG thay đổi ý nghĩa, KHÔNG thêm thông tin ngoài văn bản gốc.
 - Nếu không tìm thấy: dùng null. Nếu không rõ ràng: ghi "Cần xác nhận thêm".
 - Số tiền/tỷ lệ: ghi đầy đủ đơn vị và ký hiệu (VND, USD, %).
 - Điều khoản pháp lý: trích ngắn gọn, đủ ý.
-- Kết quả phải nhất quán với văn bản gốc — chạy nhiều lần với cùng văn bản phải cho cùng kết quả."""
+- NHẤT QUÁN: Phân tích cùng một văn bản nhiều lần phải cho kết quả không khác nhau quá 10%. Ưu tiên độ chính xác tuyệt đối — không đoán, không biến thể tuỳ tiện."""
 
 EXTRACTION_PROMPT = """\
 Phân tích hợp đồng/phụ lục dưới đây và trả về JSON theo cấu trúc sau:
@@ -376,14 +378,20 @@ def collect_files(
 # EXTRACTORS
 # ═════════════════════════════════════════════════════════════════════════════
 
-def _call_llm(prompt: str, api_key: str, max_tokens: int) -> dict:
+def _call_llm(
+    prompt: str,
+    api_key: str,
+    max_tokens: int,
+    system_suffix: str = "",
+) -> dict:
     """Gọi LLM API (OpenAI-compatible), parse JSON từ response."""
     client = OpenAI(api_key=api_key, base_url=LLM_BASE_URL)
+    system = SYSTEM_PROMPT + (f"\n\n{system_suffix}" if system_suffix else "")
     response = client.chat.completions.create(
         model=MODEL,
         max_tokens=max_tokens,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user",   "content": prompt},
         ],
         extra_body={"chat_template_kwargs": {"enable_thinking": False}},
@@ -397,14 +405,47 @@ def _call_llm(prompt: str, api_key: str, max_tokens: int) -> dict:
     return json.loads(raw.strip())
 
 
-def extract_contract(texts: dict[str, str], api_key: str) -> dict:
-    """Trích xuất thông tin có cấu trúc từ hợp đồng."""
+def _call_llm_text(
+    messages: list[dict],
+    api_key: str,
+    max_tokens: int = 1_000,
+) -> str:
+    """Gọi LLM API, trả về text thuần (dùng cho chat)."""
+    client = OpenAI(api_key=api_key, base_url=LLM_BASE_URL)
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=max_tokens,
+        messages=messages,
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+    )
+    return response.choices[0].message.content.strip()
+
+
+def extract_contract(
+    texts: dict[str, str],
+    api_key: str,
+    learning_example: dict | None = None,
+) -> dict:
+    """Trích xuất thông tin có cấu trúc từ hợp đồng.
+
+    learning_example: JSON result từ một lần review thành công trước đó,
+    dùng làm few-shot context để cải thiện độ chính xác.
+    """
     full_content = ""
     for name, text in texts.items():
         full_content += f"\n\n{'='*60}\nTÀI LIỆU: {name}\n{'='*60}\n{text}"
     prompt = EXTRACTION_PROMPT.format(content=full_content[:MAX_CONTRACT])
     print("  → Trích xuất thông tin HĐ...")
-    return _call_llm(prompt, api_key, MAX_TOKENS_EXT)
+
+    system_suffix = ""
+    if learning_example:
+        example_json = json.dumps(learning_example, ensure_ascii=False, indent=2)[:6_000]
+        system_suffix = (
+            "=== VÍ DỤ TRÍCH XUẤT THÀNH CÔNG (tham khảo cấu trúc và mức độ chi tiết) ===\n"
+            + example_json
+        )
+
+    return _call_llm(prompt, api_key, MAX_TOKENS_EXT, system_suffix=system_suffix)
 
 
 def compare_email(
@@ -447,6 +488,54 @@ Nếu không tìm thấy thông tin: answer = "Không tìm thấy trong hợp đ
 """
 
 
+CHAT_SYSTEM_PROMPT = """Bạn là trợ lý phân tích hợp đồng cho bộ phận FP&A của Zalopay.
+Bạn đang hỗ trợ người dùng tra cứu và giải đáp thắc mắc về hợp đồng đã được phân tích.
+Quy tắc bắt buộc:
+- KHÔNG ASSUME: chỉ trả lời dựa trên nội dung hợp đồng được cung cấp. Tuyệt đối không suy diễn.
+- Nếu thông tin không có trong hợp đồng: trả lời rõ ràng "Không tìm thấy thông tin này trong hợp đồng."
+- Tóm tắt ngắn gọn, rõ ràng — không dùng từ ngữ gây hiểu nhầm.
+- Dẫn chiếu Điều/Khoản cụ thể khi có thể.
+- Trả lời bằng ngôn ngữ của câu hỏi (thường là tiếng Việt).
+
+Định dạng phản hồi (QUAN TRỌNG — luôn tuân thủ):
+- Dùng Markdown: **in đậm** cho số liệu/điều khoản quan trọng, - cho danh sách, bảng dạng | Col1 | Col2 | cho dữ liệu dạng bảng.
+- Khi câu trả lời liên quan đến một mục cụ thể trong kết quả phân tích, thêm dòng cuối cùng (dòng riêng biệt):
+  [SECTION:tên_mục] — với tên_mục là một trong: summary, commercial, payment, risk, comparison
+  Ví dụ: câu hỏi về phí → thêm [SECTION:commercial]; về rủi ro → [SECTION:risk]; về thanh toán/đối soát → [SECTION:payment]
+- Giữ câu trả lời súc tích, tối đa 400 từ."""
+
+
+def chat_with_contract(
+    message: str,
+    contract_data: dict,
+    chat_history: list[dict],
+    api_key: str,
+) -> dict:
+    """Trả lời câu hỏi người dùng dựa trên dữ liệu hợp đồng đã trích xuất.
+    Trả về dict {reply: str, highlight: str|None}.
+    """
+    contract_summary = json.dumps(contract_data, ensure_ascii=False, indent=2)[:30_000]
+    system = (
+        CHAT_SYSTEM_PROMPT
+        + f"\n\n=== TÓM TẮT HỢP ĐỒNG ĐÃ PHÂN TÍCH ===\n{contract_summary}"
+    )
+    messages: list[dict] = [{"role": "system", "content": system}]
+    for turn in (chat_history or [])[-8:]:
+        messages.append({"role": turn["role"], "content": turn["content"]})
+    messages.append({"role": "user", "content": message})
+    raw = _call_llm_text(messages, api_key, max_tokens=1_500)
+
+    # Parse [SECTION:xxx] tag
+    import re as _re
+    highlight = None
+    m = _re.search(r'\[SECTION:([\w]+)\]\s*$', raw.strip())
+    if m:
+        highlight = m.group(1)
+        raw = raw[:m.start()].rstrip()
+
+    return {"reply": raw, "highlight": highlight}
+
+
 def answer_custom_queries(
     texts: dict[str, str],
     questions: list[str],
@@ -466,6 +555,106 @@ def answer_custom_queries(
     print("  → Trả lời câu hỏi tùy chọn...")
     result = _call_llm(prompt, api_key, 2_000)
     return result.get("answers", [])
+
+
+GROUP_CONTRACTS_PROMPT = """\
+Phân loại danh sách tên file sau thành các nhóm hợp đồng logic.
+Mỗi nhóm gồm 1 hợp đồng chính và các phụ lục/addendum liên quan.
+
+Quy tắc:
+- File phụ lục thường có trong tên: "phu_luc", "phuluc", "PL", "pl_", "_pl", "annex", "addendum", "amendment", "supplement", "phu luc", "PHLC"
+- Nhóm phụ lục với HĐ chính dựa trên: số HĐ giống nhau, tên công ty giống nhau, prefix/suffix tên file tương đồng
+- Nếu không xác định được quan hệ → mỗi file là 1 nhóm riêng
+- Ưu tiên nhóm nhiều file lại khi có dấu hiệu rõ ràng
+
+Danh sách file: {filenames}
+
+Trả về JSON hợp lệ DUY NHẤT:
+{{
+  "groups": [
+    {{
+      "group_name": "tên nhóm ngắn gọn (ví dụ: HĐ ABC Corp #123)",
+      "main_file": "tên file hợp đồng chính",
+      "files": ["file1.docx", "file2.docx"]
+    }}
+  ]
+}}
+"""
+
+EMAIL_TARGET_PROMPT = """\
+Đọc nội dung email sau. Xác định email này đang thảo luận/đề cập đến nhóm hợp đồng nào trong danh sách.
+Trả về JSON hợp lệ DUY NHẤT:
+{{
+  "matched_group_names": ["tên nhóm 1", ...],
+  "confidence": "HIGH | MEDIUM | LOW",
+  "reason": "lý do ngắn gọn (1 câu)"
+}}
+Nếu không xác định được → trả matched_group_names: [] (mảng rỗng).
+
+=== NỘI DUNG EMAIL ===
+{email_content}
+
+=== DANH SÁCH NHÓM HỢP ĐỒNG ===
+{groups_info}
+"""
+
+
+def group_contract_files(filenames: list[str], api_key: str) -> list[dict]:
+    """Nhóm các file hợp đồng/phụ lục thành các nhóm logic (1 HĐ + phụ lục của nó).
+    Trả về list[{group_name, main_file, files}].
+    """
+    if len(filenames) <= 1:
+        name = filenames[0] if filenames else "Hợp đồng"
+        return [{"group_name": name, "main_file": name, "files": filenames}]
+
+    prompt = GROUP_CONTRACTS_PROMPT.format(
+        filenames=json.dumps(filenames, ensure_ascii=False)
+    )
+    print("  → Nhóm các file hợp đồng/phụ lục...")
+    try:
+        result = _call_llm(prompt, api_key, 1_000)
+        groups = result.get("groups") or []
+        if not groups:
+            raise ValueError("empty groups")
+        # Validate: mỗi file phải xuất hiện trong ít nhất 1 group
+        all_in_groups = {f for g in groups for f in g.get("files", [])}
+        for f in filenames:
+            if f not in all_in_groups:
+                groups.append({"group_name": f, "main_file": f, "files": [f]})
+        return groups
+    except Exception as exc:
+        print(f"  ⚠️  Grouping fallback: {exc}")
+        return [{"group_name": f, "main_file": f, "files": [f]} for f in filenames]
+
+
+def identify_email_target(
+    email_texts: dict[str, str],
+    groups: list[dict],
+    api_key: str,
+) -> list[str]:
+    """Xác định email đang nói về nhóm hợp đồng nào.
+    Trả về list group_names được match. Nếu không xác định → trả toàn bộ group names.
+    """
+    if len(groups) <= 1:
+        return [g["group_name"] for g in groups]
+
+    email_content = "\n\n".join(email_texts.values())[:10_000]
+    groups_info = "\n".join(
+        f"- {g['group_name']}: {', '.join(g['files'])}" for g in groups
+    )
+    prompt = EMAIL_TARGET_PROMPT.format(
+        email_content=email_content,
+        groups_info=groups_info,
+    )
+    print("  → Xác định hợp đồng liên quan đến email...")
+    try:
+        result = _call_llm(prompt, api_key, 500)
+        matched = result.get("matched_group_names") or []
+        if matched:
+            return matched
+    except Exception:
+        pass
+    return [g["group_name"] for g in groups]
 
 
 # ═════════════════════════════════════════════════════════════════════════════
